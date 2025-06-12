@@ -1,47 +1,78 @@
-# Diff-UNet
+# MCD-UNet: A Multi-modal Conditional Diffusion UNet for 3D Medical Image Segmentation
 
-Diff-UNet: A Diffusion Embedded Network for Volumetric Segmentation.
+MCD-UNet is a novel, diffusion-based deep learning framework designed for 3D volumetric medical image segmentation. It introduces a sophisticated conditioning mechanism to leverage multi-modal MRI data, achieving state-of-the-art accuracy on challenging segmentation benchmarks like BraTS 2021.
 
-We design the Diff-UNet applying diffusion model to solve the 3D medical image segmentation problem.
+## Framework
 
-Diff-UNet achieves more accuracy in multiple segmentation tasks compared with other 3D segmentation methods.
+The core of MCD-UNet is a conditional denoising diffusion probabilistic model (DDPM). The model is trained to reverse a forward process that incrementally adds noise to a segmentation mask, thereby learning to generate clean masks from a noise distribution. The model's strength lies in two key innovations:
 
-![](/imgs/framework.png)
+### 1. Multi-Modal Fusion for Precision Segmentation
 
-## dataset
+The model foundationally leverages the complementary information from four different MRI modalities (T1, T1ce, T2, and Flair). These modalities are fused by stacking them into a single multi-channel input tensor. This fusion provides a comprehensive anatomical view, enabling the model to distinguish between different tissue types and tumor sub-regions with high precision, which is critical for accurate brain tumor segmentation.
 
-We release the codes which support the training and testing process of the datasets BraTS2021.
+### 2. Sophisticated Conditional Guidance
 
-BraTS2021(4 modalities and 3 segmentation targets): <https://www.kaggle.com/datasets/dschettler8845/brats-2021-task1>
+To effectively guide the segmentation process, MCD-UNet conditions the diffusion model on multi-modal MRI scans (T1, T1ce, T2, Flair) using a unique dual strategy:
 
-Once the data is downloaded, you can begin the training process. Please see the dir of BraTS2021.
+- **Input-Level Concatenation:** The multi-modal MRI scans are directly concatenated with the noisy segmentation map at the input layer of the denoising U-Net. This provides the model with direct, low-level anatomical context.
+- **Deep Feature Injection:** A separate, dedicated U-Net encoder first extracts multi-scale feature representations from the input MRI scans. These rich, hierarchical features are then injected as embeddings into the corresponding layers of the main denoising U-Net. This provides high-level semantic guidance throughout the generation process.
 
-## setup
+This dual-conditioning approach ensures that the model leverages the rich information from the multi-modal scans at every level of abstraction, from raw voxel intensities to complex anatomical features.
+
+## Dataset
+
+The codebase supports training and testing on the **BraTS 2021** dataset.
+
+- **Link:** [BraTS 2021 Task 1 on Kaggle](https://www.kaggle.com/datasets/dschettler8845/brats-2021-task1)
+- **Details:** The dataset consists of 3D multi-modal MRI scans (4 modalities) and corresponding ground-truth segmentations for brain tumors (3 sub-regions).
+
+Please download the dataset and place it in the appropriate directory to begin training. Refer to `BraTS2021/dataset/brats_data_utils_multi_label.py` for data handling details.
+
+## Setup
+
+First, create a Conda environment. We recommend using Python 3.9+.
 
 ```bash
-cd BraTS2021
-# cu111 for RTX 3060Ti
-conda create -n diff-unet python=3.8 -y
+# It is recommended to use a recent version of Python
+conda create -n mcd-unet python=3.11 -y
+conda activate mcd-unet
+```
+
+Next, install PyTorch with a compatible CUDA version. The following commands are examples for recent CUDA versions. Please check the [PyTorch website](https://pytorch.org/get-started/locally/) for the command that matches your system's CUDA toolkit.
+
+```bash
+# Example of CUDA 11.1 for RTX 3060
 pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 -f https://download.pytorch.org/whl/torch_stable.html
-# cu128 for RTX 5090
-conda create -n diff-unet python=3.11 -y
+
+# Example of CUDA 12.8 for RTX 5090
 pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-# install other packages
+```
+
+Finally, install the remaining packages:
+
+```bash
+# Navigate to the project directory
+cd BraTS2021
+# Install other packages
 pip install -r requirements.txt
 conda install conda-forge::simpleitk -y
 ```
 
-## training
+## Usage
 
-Training use Pytoch DDP mode with four GPUs. You also can modify the parameters to use one GPU to train(refer to the train.py).
+### Training
+
+The model is trained using PyTorch DDP (Distributed Data Parallel) mode, by default configured for multiple GPUs. You can easily adapt the training script `train.py` for single-GPU training by modifying the script parameters.
+
+To start the training process, run:
 
 ```bash
 python train.py
 ```
 
-## testing
+### Testing
 
-When you have trained a model, please modify the model path, then run the code.
+Once you have a trained model checkpoint, update the model path in `test.py` and run the evaluation script:
 
 ```bash
 python test.py

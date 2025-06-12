@@ -1,32 +1,19 @@
-# Copyright 2020 - 2022 MONAI Consortium
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#     http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from sklearn.model_selection import KFold
-
 import os
-import json
-import math
+
 import numpy as np
-import torch
-from monai import transforms, data
 import SimpleITK as sitk
-from tqdm import tqdm 
-from torch.utils.data import Dataset 
+from monai import transforms
+from sklearn.model_selection import KFold
+from torch.utils.data import Dataset
+from tqdm import tqdm
+
 
 def resample_img(
     image: sitk.Image,
-    out_spacing = (2.0, 2.0, 2.0),
-    out_size = None,
+    out_spacing=(2.0, 2.0, 2.0),
+    out_size=None,
     is_label: bool = False,
-    pad_value = 0.,
+    pad_value=0.0,
 ) -> sitk.Image:
     """
     Resample images to target resolution spacing
@@ -42,10 +29,10 @@ def resample_img(
     if out_size is None:
         # calculate output size in voxels
         out_size = [
-            int(np.round(
-                size * (spacing_in / spacing_out)
-            ))
-            for size, spacing_in, spacing_out in zip(original_size, original_spacing, out_spacing)
+            int(np.round(size * (spacing_in / spacing_out)))
+            for size, spacing_in, spacing_out in zip(
+                original_size, original_spacing, out_spacing
+            )
         ]
 
     # determine pad value
@@ -70,6 +57,7 @@ def resample_img(
 
     return image
 
+
 class PretrainDataset(Dataset):
     def __init__(self, datalist, transform=None, cache=False) -> None:
         super().__init__()
@@ -79,23 +67,22 @@ class PretrainDataset(Dataset):
         if cache:
             self.cache_data = []
             for i in tqdm(range(len(datalist)), total=len(datalist)):
-                d  = self.read_data(datalist[i])
+                d = self.read_data(datalist[i])
                 self.cache_data.append(d)
 
     def read_data(self, data_path):
-        
         file_identifizer = data_path.split("/")[-1].split("_")[-1]
         image_paths = [
             os.path.join(data_path, f"BraTS2021_{file_identifizer}_t1.nii.gz"),
             os.path.join(data_path, f"BraTS2021_{file_identifizer}_flair.nii.gz"),
             os.path.join(data_path, f"BraTS2021_{file_identifizer}_t2.nii.gz"),
-            os.path.join(data_path, f"BraTS2021_{file_identifizer}_t1ce.nii.gz")
+            os.path.join(data_path, f"BraTS2021_{file_identifizer}_t1ce.nii.gz"),
         ]
         seg_path = os.path.join(data_path, f"BraTS2021_{file_identifizer}_seg.nii.gz")
 
         image_data = [sitk.GetArrayFromImage(sitk.ReadImage(p)) for p in image_paths]
         seg_data = sitk.GetArrayFromImage(sitk.ReadImage(seg_path))
-        
+
         original_shape = seg_data.shape
 
         image_data = np.array(image_data).astype(np.float32)
@@ -106,12 +93,12 @@ class PretrainDataset(Dataset):
             "data_path": data_path,
             "file_identifizer": file_identifizer,
             "original_shape": original_shape,
-        } 
+        }
 
     def __getitem__(self, i):
         if self.cache:
             image = self.cache_data[i]
-        else :
+        else:
             try:
                 image = self.read_data(self.datalist[i])
             except Exception as e:
@@ -121,13 +108,14 @@ class PretrainDataset(Dataset):
                     return self.__getitem__(next_i)
                 else:
                     raise RuntimeError("cannot load any data")
-        if self.transform is not None :
+        if self.transform is not None:
             image = self.transform(image)
-        
+
         return image
 
     def __len__(self):
         return len(self.datalist)
+
 
 def get_kfold_data(data_paths, n_splits, shuffle=False):
     X = np.arange(len(data_paths))
@@ -144,16 +132,19 @@ def get_kfold_data(data_paths, n_splits, shuffle=False):
 
     return return_res
 
+
 class Args:
     def __init__(self) -> None:
-        self.workers=8
-        self.fold=0
-        self.batch_size=2
+        self.workers = 8
+        self.fold = 0
+        self.batch_size = 2
+
 
 def get_loader_brats(data_dir, batch_size=1, fold=0, fast_dev_run=False):
-
     all_dirs = os.listdir(data_dir)
-    all_paths = [os.path.join(data_dir, d) for d in all_dirs if d.startswith("BraTS2021")]
+    all_paths = [
+        os.path.join(data_dir, d) for d in all_dirs if d.startswith("BraTS2021")
+    ]
     all_paths.sort()
     # stop shuffle paths
     # import random
@@ -165,48 +156,55 @@ def get_loader_brats(data_dir, batch_size=1, fold=0, fast_dev_run=False):
     train_size = int(0.7 * size)
     val_size = int(0.1 * size)
     train_files = all_paths[:train_size]
-    val_files = all_paths[train_size:train_size + val_size]
-    test_files = all_paths[train_size+val_size:size]
-    print(f"train is {len(train_files)}, val is {len(val_files)}, test is {len(test_files)}")
+    val_files = all_paths[train_size : train_size + val_size]
+    test_files = all_paths[train_size + val_size : size]
+    print(
+        f"train is {len(train_files)}, val is {len(val_files)}, test is {len(test_files)}"
+    )
 
     train_transform = transforms.Compose(
-        [   
+        [
             transforms.ConvertToMultiChannelBasedOnBratsClassesD(keys=["label"]),
             transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
-
-            transforms.RandSpatialCropd(keys=["image", "label"], roi_size=[96, 96, 96],
-                                        random_size=False),
+            transforms.RandSpatialCropd(
+                keys=["image", "label"], roi_size=[96, 96, 96], random_size=False
+            ),
             transforms.SpatialPadd(keys=["image", "label"], spatial_size=(96, 96, 96)),
             transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=0),
             transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=1),
             transforms.RandFlipd(keys=["image", "label"], prob=0.5, spatial_axis=2),
-            transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-            
+            transforms.NormalizeIntensityd(
+                keys="image", nonzero=True, channel_wise=True
+            ),
             transforms.RandScaleIntensityd(keys="image", factors=0.1, prob=1.0),
             transforms.RandShiftIntensityd(keys="image", offsets=0.1, prob=1.0),
-            transforms.ToTensord(keys=["image", "label"],),
+            transforms.ToTensord(
+                keys=["image", "label"],
+            ),
         ]
     )
 
     val_transform = transforms.Compose(
-        [   transforms.ConvertToMultiChannelBasedOnBratsClassesD(keys=["label"]),
+        [
+            transforms.ConvertToMultiChannelBasedOnBratsClassesD(keys=["label"]),
             transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
-
-            transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
+            transforms.NormalizeIntensityd(
+                keys="image", nonzero=True, channel_wise=True
+            ),
             transforms.ToTensord(keys=["image", "label", "original_shape"]),
         ]
     )
-        
 
     train_ds = PretrainDataset(train_files, transform=train_transform)
 
     val_ds = PretrainDataset(val_files, transform=val_transform)
-    
+
     test_ds = PretrainDataset(test_files, transform=val_transform)
 
     loader = [train_ds, val_ds, test_ds]
 
     return loader
+
 
 def save_brats_pred_seg(
     prediction_array: np.ndarray,
@@ -221,8 +219,10 @@ def save_brats_pred_seg(
         print(f"data_path {data_path} does not exist!")
         return
 
-    pred_seg_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_{model_name}_pred_seg.nii.gz")
-    
+    pred_seg_path = os.path.join(
+        data_path, f"BraTS2021_{file_identifier}_{model_name}_pred_seg.nii.gz"
+    )
+
     label_map = np.zeros(prediction_array.shape[1:], dtype=np.uint8)
     if prediction_array.shape[0] == 3:
         label_map[prediction_array[1] == 1] = 2  # ED
@@ -233,16 +233,18 @@ def save_brats_pred_seg(
 
     # pad back to original shape
     original_label_map = np.zeros(original_shape, dtype=np.uint8)
-    
+
     s_z, e_z = foreground_start_coord[0], foreground_end_coord[0]
     s_y, e_y = foreground_start_coord[1], foreground_end_coord[1]
     s_x, e_x = foreground_start_coord[2], foreground_end_coord[2]
-    
+
     original_label_map[s_z:e_z, s_y:e_y, s_x:e_x] = label_map
 
     pred_image = sitk.GetImageFromArray(original_label_map)
-    
-    original_image_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_t1.nii.gz")
+
+    original_image_path = os.path.join(
+        data_path, f"BraTS2021_{file_identifier}_t1.nii.gz"
+    )
     if os.path.exists(original_image_path):
         original_image = sitk.ReadImage(original_image_path)
         pred_image.SetOrigin(original_image.GetOrigin())
@@ -255,6 +257,7 @@ def save_brats_pred_seg(
     sitk.WriteImage(pred_image, pred_seg_path)
 
     print(f"save pred_seg to {pred_seg_path}")
+
 
 def save_brats_uncer(
     uncer_array: np.ndarray,
@@ -269,17 +272,21 @@ def save_brats_uncer(
         print(f"data_path {data_path} does not exist!")
         return
 
-    uncer_save_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_{model_name}_uncer.npz")
-    
+    uncer_save_path = os.path.join(
+        data_path, f"BraTS2021_{file_identifier}_{model_name}_uncer.npz"
+    )
+
     # pad back to original shape
     # uncer_array shape is (10, 3, crop_z, crop_y, crop_x)
-    original_uncer_map = np.zeros((uncer_array.shape[0], uncer_array.shape[1], *original_shape), dtype=np.uint8)
-    
+    original_uncer_map = np.zeros(
+        (uncer_array.shape[0], uncer_array.shape[1], *original_shape), dtype=np.uint8
+    )
+
     s_z, e_z = foreground_start_coord[0], foreground_end_coord[0]
     s_y, e_y = foreground_start_coord[1], foreground_end_coord[1]
     s_x, e_x = foreground_start_coord[2], foreground_end_coord[2]
-    
-    # 将不确定性值从0-1范围转换为0-100整数范围
+
+    # convert uncertainty value from 0-1 range to 0-100 integer range
     uncer_array_scaled = (uncer_array * 100).astype(np.uint8)
     original_uncer_map[:, :, s_z:e_z, s_y:e_y, s_x:e_x] = uncer_array_scaled
 

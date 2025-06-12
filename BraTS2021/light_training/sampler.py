@@ -1,6 +1,7 @@
-import torch 
-import math 
-import numpy as np 
+import math
+
+import torch
+
 
 class SequentialDistributedSampler(torch.utils.data.sampler.Sampler):
     """
@@ -26,7 +27,12 @@ class SequentialDistributedSampler(torch.utils.data.sampler.Sampler):
         self.num_replicas = num_replicas
         self.rank = rank
         self.batch_size = batch_size
-        self.num_samples = int(math.ceil(len(self.dataset) * 1.0 / self.batch_size / self.num_replicas)) * self.batch_size
+        self.num_samples = (
+            int(
+                math.ceil(len(self.dataset) * 1.0 / self.batch_size / self.num_replicas)
+            )
+            * self.batch_size
+        )
         self.total_size = self.num_samples * self.num_replicas
 
     def __iter__(self):
@@ -34,7 +40,9 @@ class SequentialDistributedSampler(torch.utils.data.sampler.Sampler):
         # add extra samples to make it evenly divisible
         indices += [indices[-1]] * (self.total_size - len(indices))
         # subsample
-        indices = indices[self.rank * self.num_samples : (self.rank + 1) * self.num_samples]
+        indices = indices[
+            self.rank * self.num_samples : (self.rank + 1) * self.num_samples
+        ]
         return iter(indices)
 
     def __len__(self):

@@ -13,7 +13,6 @@ from typing import Optional, Sequence, Union
 
 import torch
 import torch.nn as nn
-
 from monai.networks.blocks import Convolution, UpSample
 from monai.networks.layers.factories import Conv, Pool
 from monai.utils import deprecated_arg, ensure_tuple_rep
@@ -24,7 +23,12 @@ __all__ = ["BasicUnet", "Basicunet", "basicunet", "BasicUNet"]
 class TwoConv(nn.Sequential):
     """two convolutions."""
 
-    @deprecated_arg(name="dim", new_name="spatial_dims", since="0.6", msg_suffix="Please use `spatial_dims` instead.")
+    @deprecated_arg(
+        name="dim",
+        new_name="spatial_dims",
+        since="0.6",
+        msg_suffix="Please use `spatial_dims` instead.",
+    )
     def __init__(
         self,
         spatial_dims: int,
@@ -53,9 +57,25 @@ class TwoConv(nn.Sequential):
 
         if dim is not None:
             spatial_dims = dim
-        conv_0 = Convolution(spatial_dims, in_chns, out_chns, act=act, norm=norm, dropout=dropout, bias=bias, padding=1)
+        conv_0 = Convolution(
+            spatial_dims,
+            in_chns,
+            out_chns,
+            act=act,
+            norm=norm,
+            dropout=dropout,
+            bias=bias,
+            padding=1,
+        )
         conv_1 = Convolution(
-            spatial_dims, out_chns, out_chns, act=act, norm=norm, dropout=dropout, bias=bias, padding=1
+            spatial_dims,
+            out_chns,
+            out_chns,
+            act=act,
+            norm=norm,
+            dropout=dropout,
+            bias=bias,
+            padding=1,
         )
         self.add_module("conv_0", conv_0)
         self.add_module("conv_1", conv_1)
@@ -64,7 +84,12 @@ class TwoConv(nn.Sequential):
 class Down(nn.Sequential):
     """maxpooling downsampling and two convolutions."""
 
-    @deprecated_arg(name="dim", new_name="spatial_dims", since="0.6", msg_suffix="Please use `spatial_dims` instead.")
+    @deprecated_arg(
+        name="dim",
+        new_name="spatial_dims",
+        since="0.6",
+        msg_suffix="Please use `spatial_dims` instead.",
+    )
     def __init__(
         self,
         spatial_dims: int,
@@ -101,7 +126,12 @@ class Down(nn.Sequential):
 class UpCat(nn.Module):
     """upsampling, concatenation with the encoder feature map, two convolutions"""
 
-    @deprecated_arg(name="dim", new_name="spatial_dims", since="0.6", msg_suffix="Please use `spatial_dims` instead.")
+    @deprecated_arg(
+        name="dim",
+        new_name="spatial_dims",
+        since="0.6",
+        msg_suffix="Please use `spatial_dims` instead.",
+    )
     def __init__(
         self,
         spatial_dims: int,
@@ -160,7 +190,9 @@ class UpCat(nn.Module):
             interp_mode=interp_mode,
             align_corners=align_corners,
         )
-        self.convs = TwoConv(spatial_dims, cat_chns + up_chns, out_chns, act, norm, bias, dropout)
+        self.convs = TwoConv(
+            spatial_dims, cat_chns + up_chns, out_chns, act, norm, bias, dropout
+        )
 
     def forward(self, x: torch.Tensor, x_e: Optional[torch.Tensor]):
         """
@@ -179,7 +211,9 @@ class UpCat(nn.Module):
                 if x_e.shape[-i - 1] != x_0.shape[-i - 1]:
                     sp[i * 2 + 1] = 1
             x_0 = torch.nn.functional.pad(x_0, sp, "replicate")
-            x = self.convs(torch.cat([x_e, x_0], dim=1))  # input channels: (cat_chns + up_chns)
+            x = self.convs(
+                torch.cat([x_e, x_0], dim=1)
+            )  # input channels: (cat_chns + up_chns)
         else:
             x = self.convs(x_0)
 
@@ -188,7 +222,10 @@ class UpCat(nn.Module):
 
 class BasicUNet(nn.Module):
     @deprecated_arg(
-        name="dimensions", new_name="spatial_dims", since="0.6", msg_suffix="Please use `spatial_dims` instead."
+        name="dimensions",
+        new_name="spatial_dims",
+        since="0.6",
+        msg_suffix="Please use `spatial_dims` instead.",
     )
     def __init__(
         self,
@@ -196,7 +233,10 @@ class BasicUNet(nn.Module):
         in_channels: int = 1,
         out_channels: int = 2,
         features: Sequence[int] = (32, 32, 64, 128, 256, 32),
-        act: Union[str, tuple] = ("LeakyReLU", {"negative_slope": 0.1, "inplace": True}),
+        act: Union[str, tuple] = (
+            "LeakyReLU",
+            {"negative_slope": 0.1, "inplace": True},
+        ),
         norm: Union[str, tuple] = ("instance", {"affine": True}),
         bias: bool = True,
         dropout: Union[float, tuple] = 0.0,
@@ -259,19 +299,40 @@ class BasicUNet(nn.Module):
         fea = ensure_tuple_rep(features, 6)
         print(f"BasicUNet features: {fea}.")
 
-        self.conv_0 = TwoConv(spatial_dims, in_channels, features[0], act, norm, bias, dropout)
+        self.conv_0 = TwoConv(
+            spatial_dims, in_channels, features[0], act, norm, bias, dropout
+        )
         self.down_1 = Down(spatial_dims, fea[0], fea[1], act, norm, bias, dropout)
         self.down_2 = Down(spatial_dims, fea[1], fea[2], act, norm, bias, dropout)
         self.down_3 = Down(spatial_dims, fea[2], fea[3], act, norm, bias, dropout)
         self.down_4 = Down(spatial_dims, fea[3], fea[4], act, norm, bias, dropout)
 
-        self.upcat_4 = UpCat(spatial_dims, fea[4], fea[3], fea[3], act, norm, bias, dropout, upsample)
-        self.upcat_3 = UpCat(spatial_dims, fea[3], fea[2], fea[2], act, norm, bias, dropout, upsample)
-        self.upcat_2 = UpCat(spatial_dims, fea[2], fea[1], fea[1], act, norm, bias, dropout, upsample)
-        self.upcat_1 = UpCat(spatial_dims, fea[1], fea[0], fea[5], act, norm, bias, dropout, upsample, halves=False)
+        self.upcat_4 = UpCat(
+            spatial_dims, fea[4], fea[3], fea[3], act, norm, bias, dropout, upsample
+        )
+        self.upcat_3 = UpCat(
+            spatial_dims, fea[3], fea[2], fea[2], act, norm, bias, dropout, upsample
+        )
+        self.upcat_2 = UpCat(
+            spatial_dims, fea[2], fea[1], fea[1], act, norm, bias, dropout, upsample
+        )
+        self.upcat_1 = UpCat(
+            spatial_dims,
+            fea[1],
+            fea[0],
+            fea[5],
+            act,
+            norm,
+            bias,
+            dropout,
+            upsample,
+            halves=False,
+        )
 
-        self.final_conv = Conv["conv", spatial_dims](fea[5], out_channels, kernel_size=1)
-        
+        self.final_conv = Conv["conv", spatial_dims](
+            fea[5], out_channels, kernel_size=1
+        )
+
         self.return_embeddings = return_embeddings
 
     def forward(self, x: torch.Tensor):
@@ -320,7 +381,10 @@ BasicUnet = Basicunet = basicunet = BasicUNet
 
 class BasicUNetEncoder(nn.Module):
     @deprecated_arg(
-        name="dimensions", new_name="spatial_dims", since="0.6", msg_suffix="Please use `spatial_dims` instead."
+        name="dimensions",
+        new_name="spatial_dims",
+        since="0.6",
+        msg_suffix="Please use `spatial_dims` instead.",
     )
     def __init__(
         self,
@@ -328,7 +392,10 @@ class BasicUNetEncoder(nn.Module):
         in_channels: int = 1,
         out_channels: int = 2,
         features: Sequence[int] = (32, 32, 64, 128, 256, 32),
-        act: Union[str, tuple] = ("LeakyReLU", {"negative_slope": 0.1, "inplace": True}),
+        act: Union[str, tuple] = (
+            "LeakyReLU",
+            {"negative_slope": 0.1, "inplace": True},
+        ),
         norm: Union[str, tuple] = ("instance", {"affine": True}),
         bias: bool = True,
         dropout: Union[float, tuple] = 0.0,
@@ -390,7 +457,9 @@ class BasicUNetEncoder(nn.Module):
         fea = ensure_tuple_rep(features, 6)
         print(f"BasicUNet features: {fea}.")
 
-        self.conv_0 = TwoConv(spatial_dims, in_channels, features[0], act, norm, bias, dropout)
+        self.conv_0 = TwoConv(
+            spatial_dims, in_channels, features[0], act, norm, bias, dropout
+        )
         self.down_1 = Down(spatial_dims, fea[0], fea[1], act, norm, bias, dropout)
         self.down_2 = Down(spatial_dims, fea[1], fea[2], act, norm, bias, dropout)
         self.down_3 = Down(spatial_dims, fea[2], fea[3], act, norm, bias, dropout)
@@ -409,7 +478,6 @@ class BasicUNetEncoder(nn.Module):
             ``(Batch, out_channels, dim_0[, dim_1, ..., dim_N])``.
         """
 
-            
         x0 = self.conv_0(x)
         x1 = self.down_1(x0)
         x2 = self.down_2(x1)
@@ -417,5 +485,3 @@ class BasicUNetEncoder(nn.Module):
         x4 = self.down_4(x3)
 
         return [x0, x1, x2, x3, x4]
-        
-
