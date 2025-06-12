@@ -95,12 +95,17 @@ class PretrainDataset(Dataset):
 
         image_data = [sitk.GetArrayFromImage(sitk.ReadImage(p)) for p in image_paths]
         seg_data = sitk.GetArrayFromImage(sitk.ReadImage(seg_path))
+        
+        original_shape = seg_data.shape
 
         image_data = np.array(image_data).astype(np.float32)
         seg_data = np.expand_dims(np.array(seg_data).astype(np.int32), axis=0)
         return {
             "image": image_data,
-            "label": seg_data
+            "label": seg_data,
+            "data_path": data_path,
+            "file_identifizer": file_identifizer,
+            "original_shape": original_shape,
         } 
 
     def __getitem__(self, i):
@@ -148,12 +153,15 @@ class Args:
 def get_loader_brats(data_dir, batch_size=1, fold=0, fast_dev_run=False):
 
     all_dirs = os.listdir(data_dir)
-    all_paths = [os.path.join(data_dir, d) for d in all_dirs]
-    import random
-    random.shuffle(all_paths)
+    all_paths = [os.path.join(data_dir, d) for d in all_dirs if d.startswith("BraTS2021")]
+    all_paths.sort()
+    # stop shuffle paths
+    # import random
+    # random.shuffle(all_paths)
     size = len(all_paths)
     if fast_dev_run:
         size = 10
+    print(f"BraTS2021 data size is {size}.")
     train_size = int(0.7 * size)
     val_size = int(0.1 * size)
     train_files = all_paths[:train_size]
@@ -179,14 +187,16 @@ def get_loader_brats(data_dir, batch_size=1, fold=0, fast_dev_run=False):
             transforms.ToTensord(keys=["image", "label"],),
         ]
     )
+
     val_transform = transforms.Compose(
         [   transforms.ConvertToMultiChannelBasedOnBratsClassesD(keys=["label"]),
             transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
 
             transforms.NormalizeIntensityd(keys="image", nonzero=True, channel_wise=True),
-            transforms.ToTensord(keys=["image", "label"]),
+            transforms.ToTensord(keys=["image", "label", "original_shape"]),
         ]
     )
+        
 
     train_ds = PretrainDataset(train_files, transform=train_transform)
 
@@ -197,3 +207,82 @@ def get_loader_brats(data_dir, batch_size=1, fold=0, fast_dev_run=False):
     loader = [train_ds, val_ds, test_ds]
 
     return loader
+
+def save_brats_pred_seg(
+    prediction_array: np.ndarray,
+    data_path: str,
+    file_identifier: str,
+    model_name: str,
+    original_shape,
+    foreground_start_coord,
+    foreground_end_coord,
+):
+    if not os.path.exists(data_path):
+        print(f"data_path {data_path} does not exist!")
+        return
+
+    pred_seg_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_{model_name}_pred_seg.nii.gz")
+    
+    label_map = np.zeros(prediction_array.shape[1:], dtype=np.uint8)
+    if prediction_array.shape[0] == 3:
+        label_map[prediction_array[1] == 1] = 2  # ED
+        label_map[prediction_array[0] == 1] = 1  # NCR/NET
+        label_map[prediction_array[2] == 1] = 4  # ET
+    else:
+        label_map = prediction_array.astype(np.uint8)
+
+    # pad back to original shape
+    original_label_map = np.zeros(original_shape, dtype=np.uint8)
+    
+    s_z, e_z = foreground_start_coord[0], foreground_end_coord[0]
+    s_y, e_y = foreground_start_coord[1], foreground_end_coord[1]
+    s_x, e_x = foreground_start_coord[2], foreground_end_coord[2]
+    
+    original_label_map[s_z:e_z, s_y:e_y, s_x:e_x] = label_map
+
+    pred_image = sitk.GetImageFromArray(original_label_map)
+    
+    original_image_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_t1.nii.gz")
+    if os.path.exists(original_image_path):
+        original_image = sitk.ReadImage(original_image_path)
+        pred_image.SetOrigin(original_image.GetOrigin())
+        pred_image.SetSpacing(original_image.GetSpacing())
+        pred_image.SetDirection(original_image.GetDirection())
+    else:
+        print(f"original_image_path {original_image_path} does not exist!")
+        return
+
+    sitk.WriteImage(pred_image, pred_seg_path)
+
+    print(f"save pred_seg to {pred_seg_path}")
+
+def save_brats_uncer(
+    uncer_array: np.ndarray,
+    data_path: str,
+    file_identifier: str,
+    model_name: str,
+    original_shape,
+    foreground_start_coord,
+    foreground_end_coord,
+):
+    if not os.path.exists(data_path):
+        print(f"data_path {data_path} does not exist!")
+        return
+
+    uncer_save_path = os.path.join(data_path, f"BraTS2021_{file_identifier}_{model_name}_uncer.npz")
+    
+    # pad back to original shape
+    # uncer_array shape is (10, 3, crop_z, crop_y, crop_x)
+    original_uncer_map = np.zeros((uncer_array.shape[0], uncer_array.shape[1], *original_shape), dtype=np.uint8)
+    
+    s_z, e_z = foreground_start_coord[0], foreground_end_coord[0]
+    s_y, e_y = foreground_start_coord[1], foreground_end_coord[1]
+    s_x, e_x = foreground_start_coord[2], foreground_end_coord[2]
+    
+    # 将不确定性值从0-1范围转换为0-100整数范围
+    uncer_array_scaled = (uncer_array * 100).astype(np.uint8)
+    original_uncer_map[:, :, s_z:e_z, s_y:e_y, s_x:e_x] = uncer_array_scaled
+
+    np.savez_compressed(uncer_save_path, uncer=original_uncer_map)
+
+    print(f"save uncer to {uncer_save_path}")

@@ -16,6 +16,7 @@ import numpy as np
 import torch
 import torch.nn.parallel
 import torch.utils.data.distributed
+import csv
 
 from monai.data import DataLoader
 
@@ -153,11 +154,11 @@ class Trainer:
         for idx, batch in tqdm(enumerate(val_loader), total=len(val_loader)):
             if isinstance(batch, dict):
                 batch = {
-                    x: batch[x].to(self.device)
-                    for x in batch if isinstance(batch[x], torch.Tensor)
+                    x: batch[x].to(self.device) if isinstance(batch[x], torch.Tensor) else batch[x]
+                    for x in batch 
                 }
             elif isinstance(batch, list) :
-                batch = [x.to(self.device) for x in batch if isinstance(x, torch.Tensor)]
+                batch = [x.to(self.device) if isinstance(x, torch.Tensor) else x for x in batch]
 
             elif isinstance(batch, torch.Tensor):
                 batch = batch.to(self.device)
@@ -426,14 +427,35 @@ class Trainer:
     def validation_end(self, mean_val_outputs):
         pass 
 
+    def log_to_csv(self, k, v, step):
+        if self.local_rank == 0:
+            k_split = k.split("/")
+            stage_name = k_split[0]
+            metric_name = k_split[1]
+            csv_path = os.path.join(self.logdir, stage_name)
+            os.makedirs(csv_path, exist_ok=True)
+            csv_file_path = os.path.join(csv_path, metric_name + ".csv")
+            
+            file_exists = os.path.isfile(csv_file_path)
+            
+            with open(csv_file_path, 'a', newline='') as f:
+                writer = csv.writer(f)
+                
+                if not file_exists:
+                    writer.writerow(['step', 'value'])
+                
+                value = v.item() if isinstance(v, torch.Tensor) else v
+                writer.writerow([step, value])
 
     def log(self, k, v, step):
         if self.env_type == "pytorch":
             self.writer.add_scalar(k, scalar_value=v, global_step=step)
+            self.log_to_csv(k, v, step)
 
         else :
             if self.local_rank == 0:
                 self.writer.add_scalar(k, scalar_value=v, global_step=step)
+                self.log_to_csv(k, v, step)
 
     def load_state_dict(self, weight_path, strict=True):
         sd = torch.load(weight_path, map_location="cpu")

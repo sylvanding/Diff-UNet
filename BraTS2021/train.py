@@ -27,12 +27,13 @@ model_save_path = os.path.join(logdir, "model")
 
 env = "pytorch" # or env = "pytorch" if you only have one gpu.
 
-max_epoch = 10
+max_epoch = 3
 batch_size = 1
 val_every = 1
 num_gpus = 1
 device = "cuda:0"
 num_workers = 1
+save_every = 1
 fast_dev_run = True
 
 number_modality = 4
@@ -54,7 +55,7 @@ class DiffUNet(nn.Module):
                                             loss_type=LossType.MSE,
                                             )
 
-        self.sample_diffusion = SpacedDiffusion(use_timesteps=space_timesteps(1000, [20]),
+        self.sample_diffusion = SpacedDiffusion(use_timesteps=space_timesteps(1000, [10]),
                                             betas=betas,
                                             model_mean_type=ModelMeanType.START_X,
                                             model_var_type=ModelVarType.FIXED_LARGE,
@@ -83,9 +84,13 @@ class DiffUNet(nn.Module):
 class BraTSTrainer(Trainer):
     def __init__(self, env_type, max_epochs, batch_size, device="cpu", val_every=1, num_gpus=1, logdir="./logs/", master_ip='localhost', master_port=17750, training_script="train.py", num_workers=8):
         super().__init__(env_type, max_epochs, batch_size, device, val_every, num_gpus, logdir, master_ip, master_port, training_script, num_workers)
+        if fast_dev_run:
+            overlap = 0.1
+        else:
+            overlap = 0.25
         self.window_infer = SlidingWindowInferer(roi_size=[96, 96, 96],
                                         sw_batch_size=1,
-                                        overlap=0.25)
+                                        overlap=overlap)
         self.model = DiffUNet()
 
         self.best_mean_dice = 0.0
@@ -98,6 +103,8 @@ class BraTSTrainer(Trainer):
 
         self.bce = nn.BCEWithLogitsLoss()
         self.dice_loss = DiceLoss(sigmoid=True)
+        
+        self.save_every = save_every
 
     def training_step(self, batch):
         image, label = self.get_input(batch)
@@ -139,15 +146,17 @@ class BraTSTrainer(Trainer):
         output = (output > 0.5).float().cpu().numpy()
 
         target = label.cpu().numpy()
-        # TODO: make sure the order of the targets is correct, also check the test.py
-        # whole tumor
+        
+        # peritumoral edema
         o = output[:, 1]
         t = target[:, 1]
         wt = dice(o, t)
-        # tumor core
+        
+        # necrotic tumor core
         o = output[:, 0]
         t = target[:, 0]
         tc = dice(o, t)
+        
         # enhancing tumor
         o = output[:, 2]
         t = target[:, 2]
@@ -206,7 +215,6 @@ if __name__ == "__main__":
                             logdir=logdir,
                             val_every=val_every,
                             num_gpus=num_gpus,
-                            master_port=17751,
                             training_script=__file__,
                             num_workers=num_workers)
 
