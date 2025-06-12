@@ -131,6 +131,7 @@ dmypy.json
 # logs
 logs/
 logs_brats/
+logs_unet/
 
 # model
 model/

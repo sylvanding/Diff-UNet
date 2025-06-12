@@ -202,6 +202,7 @@ class BasicUNet(nn.Module):
         dropout: Union[float, tuple] = 0.0,
         upsample: str = "deconv",
         dimensions: Optional[int] = None,
+        return_embeddings: bool = True,
     ):
         """
         A UNet implementation with 1D/2D/3D supports.
@@ -230,7 +231,7 @@ class BasicUNet(nn.Module):
             dropout: dropout ratio. Defaults to no dropout.
             upsample: upsampling mode, available options are
                 ``"deconv"``, ``"pixelshuffle"``, ``"nontrainable"``.
-
+            return_embeddings: whether to return embeddings. Defaults to True.
         .. deprecated:: 0.6.0
             ``dimensions`` is deprecated, use ``spatial_dims`` instead.
 
@@ -270,6 +271,8 @@ class BasicUNet(nn.Module):
         self.upcat_1 = UpCat(spatial_dims, fea[1], fea[0], fea[5], act, norm, bias, dropout, upsample, halves=False)
 
         self.final_conv = Conv["conv", spatial_dims](fea[5], out_channels, kernel_size=1)
+        
+        self.return_embeddings = return_embeddings
 
     def forward(self, x: torch.Tensor):
         """
@@ -306,7 +309,10 @@ class BasicUNet(nn.Module):
         u1 = self.upcat_1(u2, x0)
 
         logits = self.final_conv(u1)
-        return logits, embeddings
+        if self.return_embeddings:
+            return logits, embeddings
+        else:
+            return logits
 
 
 BasicUnet = Basicunet = basicunet = BasicUNet

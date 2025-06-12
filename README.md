@@ -23,9 +23,9 @@ cd BraTS2021
 # cu111 for RTX 3060Ti
 conda create -n diff-unet python=3.8 -y
 pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 -f https://download.pytorch.org/whl/torch_stable.html
-# cu121 for RTX 5090
+# cu128 for RTX 5090
 conda create -n diff-unet python=3.11 -y
-pip install torch==2.2.1 torchvision==0.17.1 --index-url https://download.pytorch.org/whl/cu121
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 # install other packages
 pip install -r requirements.txt
 conda install conda-forge::simpleitk -y
