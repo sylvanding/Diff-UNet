@@ -216,7 +216,7 @@ def fscore(test=None, reference=None, confusion_matrix=None, nan_for_nonexisting
     recall_ = recall(test, reference, confusion_matrix, nan_for_nonexisting)
 
     return (1 + beta*beta) * precision_ * recall_ /\
-        ((beta*beta * precision_) + recall_)
+        ((beta*beta * precision_) + recall_) if ((beta*beta * precision_) + recall_) != 0 else 0
 
 
 def false_positive_rate(test=None, reference=None, confusion_matrix=None, nan_for_nonexisting=True, **kwargs):
