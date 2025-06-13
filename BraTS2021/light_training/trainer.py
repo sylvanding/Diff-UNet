@@ -65,7 +65,7 @@ class Trainer:
 
         gpu_count = torch.cuda.device_count()
         if num_gpus > gpu_count:
-            print("gpu数量不符")
+            print("num_gpus is not equal to gpu_count")
             os._exit(0)
 
         if env_type == "DDP" or env_type == "ddp":
@@ -104,7 +104,7 @@ class Trainer:
                 init_method=init_method,
             )
             self.world_size = torch.distributed.get_world_size()
-            # 模型初始化相同，但是训练时要保证数据增强不同。
+            # initialize the same model, but the data augmentation should be different.
 
             print(f"world size is {self.world_size}")
 
@@ -193,7 +193,7 @@ class Trainer:
 
         val_outputs = torch.tensor(val_outputs)
         if not return_list:
-            # 说明只有一个变量
+            # there is only one variable
             length = 0
             v_sum = 0.0
             for v in val_outputs:
@@ -330,7 +330,7 @@ class Trainer:
                     if isinstance(val_out, list) or isinstance(val_out, tuple):
                         return_list = True
 
-                ## 先汇总结果。
+                ## first summarize the results.
                 if self.ddp:
                     val_outputs = torch.tensor(val_outputs).cuda(self.local_rank)
                     torch.distributed.barrier()
@@ -346,7 +346,7 @@ class Trainer:
 
                 if self.local_rank == 0:
                     if not return_list:
-                        # 说明只有一个变量
+                        # there is only one variable
                         length = 0
                         v_sum = 0.0
                         for v in val_outputs:
