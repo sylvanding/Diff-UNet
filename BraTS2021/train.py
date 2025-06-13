@@ -37,7 +37,7 @@ val_every = 1
 num_gpus = 1
 device = "cuda:0"
 num_workers = 1
-save_every = 1
+save_every = val_every * 1  # save_every must be the multiple of val_every
 fast_dev_run = True
 
 number_modality = 4
@@ -226,7 +226,7 @@ class BraTSTrainer(Trainer):
         #                                     f"best_model_{mean_dice:.4f}.pt"),
         #                                     delete_symbol="best_model")
 
-        if self.epoch % self.save_every == 0 and self.epoch != 0:
+        if (self.epoch + 1) % self.save_every == 0 and self.epoch != 0:
             save_new_model_and_delete_last(
                 self.model,
                 os.path.join(
