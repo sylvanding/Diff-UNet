@@ -77,3 +77,11 @@ Once you have a trained model checkpoint, update the model path in `test.py` and
 ```bash
 python test.py
 ```
+
+## Downloads
+
+We provide the pre-trained models, training logs, and the test dataset with our segmentation results. You can download them from the links below:
+
+- **Pre-trained Models:** [Download from Baidu Netdisk](https://pan.baidu.com/s/1AW0_5pwKmX3Ig4ykA9V_Jw?pwd=tek7)
+- **Training Logs:** [Download from Baidu Netdisk](https://pan.baidu.com/s/1JCvbTuyK71UQqpzMcutvdg?pwd=4uzp)
+- **Test data and Segmentation Results:** [Download from Baidu Netdisk](https://pan.baidu.com/s/1q2Wg3KXNVwaBgtTDF3Q2sw?pwd=4ixr)
